@@ -14,6 +14,10 @@ public final class BCBridgeExecute extends AbstractMojo {
     @Parameter
     private List<Bridge> bridges;
 
+    void setBridges(List<Bridge> bridges) {
+        this.bridges = bridges;
+    }
+
     @Override
     public void execute() {
         getLog().info("Hello World");
