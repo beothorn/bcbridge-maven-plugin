@@ -1,42 +1,62 @@
 package br.com.isageek.bcbridge.maven;
 
+import java.io.File;
 import java.util.List;
 import org.apache.maven.plugin.AbstractMojo;
+import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 
-/** Loads and prints the bridges configured in the consuming project's POM. */
-@Mojo(name = "hello", defaultPhase = LifecyclePhase.PACKAGE, threadSafe = true)
+/** Rewrites configured source methods to invoke their destinations directly. */
+@Mojo(name = "rewrite", defaultPhase = LifecyclePhase.PACKAGE, threadSafe = true)
 public final class BCBridgeExecute extends AbstractMojo {
 
     /** Bridges that will eventually be applied to the packaged application. */
     @Parameter
     private List<Bridge> bridges;
 
+    @Parameter(defaultValue = "${project.build.outputDirectory}", readonly = true, required = true)
+    private File outputDirectory;
+
+    @Parameter(defaultValue = "${project.build.directory}/${project.build.finalName}.${project.packaging}",
+            readonly = true, required = true)
+    private File packagedArtifact;
+
     void setBridges(List<Bridge> bridges) {
         this.bridges = bridges;
     }
 
-    @Override
-    public void execute() {
-        getLog().info("Hello World");
+    void setOutputDirectory(File outputDirectory) {
+        this.outputDirectory = outputDirectory;
+    }
 
+    void setPackagedArtifact(File packagedArtifact) {
+        this.packagedArtifact = packagedArtifact;
+    }
+
+    @Override
+    public void execute() throws MojoExecutionException, MojoFailureException {
         if (bridges == null || bridges.isEmpty()) {
             getLog().info("No bridges configured");
             return;
         }
 
-        getLog().info("Configured bridges:");
-        for (int index = 0; index < bridges.size(); index++) {
-            Bridge bridge = bridges.get(index);
-            getLog().info(String.format(
-                    "Bridge %d: sourceApplication=%s, source=%s, dest=%s, type=%s",
-                    index + 1,
-                    bridge.getSourceApplication(),
-                    bridge.getSource(),
-                    bridge.getDest(),
-                    bridge.getType()));
+        for (Bridge bridge : bridges) {
+            if (!"redirect".equals(bridge.getType())) {
+                throw new MojoFailureException("Unsupported bridge type '" + bridge.getType()
+                        + "'. The currently supported type is 'redirect'.");
+            }
+        }
+
+        try {
+            new BytecodeBridgeRewriter(outputDirectory.toPath(), packagedArtifact.toPath(), getLog()::info)
+                    .rewrite(bridges);
+        } catch (BridgeConfigurationException e) {
+            throw new MojoFailureException(e.getMessage(), e);
+        } catch (Exception e) {
+            throw new MojoExecutionException("Could not rewrite bytecode", e);
         }
     }
 }

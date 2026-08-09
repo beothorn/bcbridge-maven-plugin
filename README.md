@@ -2,7 +2,9 @@
 
 A Maven plugin for rewriting Java bytecode with Byte Buddy during the `package` phase.
 
-The `hello` goal loads bridge definitions from the consuming POM and prints them during a build.
+The `rewrite` goal replaces configured source method bodies with direct calls to destination methods. Method
+parameters are relayed to the destination. The packaged application does not need Byte Buddy, a Java agent, or
+runtime reflection.
 
 ## Requirements
 
@@ -33,15 +35,10 @@ Add this configuration inside the consuming project's `<build>` element:
       <configuration>
         <bridges>
           <bridge>
-            <sourceApplication>App1</sourceApplication>
-            <source>com.example.App1Main#foo</source>
-            <dest>com.example.App2Main#fooWithLog</dest>
+            <sourceApplication>my-application</sourceApplication>
+            <source>com.example.App#printOriginal</source>
+            <dest>com.example.App#printRedirected</dest>
             <type>redirect</type>
-          </bridge>
-          <bridge>
-            <sourceApplication>App2</sourceApplication>
-            <source>com.example.App2Main#foobar</source>
-            <dest>com.example.App2Main#redirectToItselfFooBar</dest>
           </bridge>
         </bridges>
       </configuration>
@@ -50,7 +47,7 @@ Add this configuration inside the consuming project's `<build>` element:
           <id>bcbridge</id>
           <phase>package</phase>
           <goals>
-            <goal>hello</goal>
+            <goal>rewrite</goal>
           </goals>
         </execution>
       </executions>
@@ -68,18 +65,18 @@ mvn package
 The build output will include:
 
 ```text
-[INFO] --- bcbridge:1.0.0-SNAPSHOT:hello (bcbridge) @ your-project ---
-[INFO] Hello World
-[INFO] Configured bridges:
-[INFO] Bridge 1: sourceApplication=App1, source=com.example.App1Main#foo, dest=com.example.App2Main#fooWithLog, type=redirect
-[INFO] Bridge 2: sourceApplication=App2, source=com.example.App2Main#foobar, dest=com.example.App2Main#redirectToItselfFooBar, type=redirect
+[INFO] --- bcbridge:1.0.0-SNAPSHOT:rewrite (bcbridge) @ your-project ---
+[INFO] Redirecting com.example.App#printOriginal -> com.example.App#printRedirected
 ```
 
-The `type` element is optional and currently defaults to `redirect`. Future milestones can add types such as
-`onMethodEnter` and `onMethodLeave` without changing the surrounding list structure.
+The `type` element is optional and defaults to `redirect`. Other planned types such as `onMethodEnter` and
+`onMethodLeave` are rejected until they are implemented.
 
-You can also invoke the goal directly after installing the plugin locally:
+For `redirect`:
 
-```shell
-mvn br.com.isageek:bcbridge-maven-plugin:1.0.0-SNAPSHOT:hello
-```
+- Source and destination parameters must have identical types.
+- The destination return type must be compatible with the source return type.
+- A non-static destination class must have a no-argument constructor.
+- Overloaded source methods are supported when every overload has a matching destination signature.
+- Both `target/classes` and the packaged JAR are rewritten. Run the goal through `mvn package` so the JAR exists
+  before rewriting begins.
