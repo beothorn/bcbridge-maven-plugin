@@ -2,7 +2,7 @@
 
 A Maven plugin for rewriting Java bytecode with Byte Buddy during the `package` phase.
 
-The first milestone provides a `hello` goal that prints `Hello World` during a build.
+The `hello` goal loads bridge definitions from the consuming POM and prints them during a build.
 
 ## Requirements
 
@@ -30,6 +30,21 @@ Add this configuration inside the consuming project's `<build>` element:
       <groupId>br.com.isageek</groupId>
       <artifactId>bcbridge-maven-plugin</artifactId>
       <version>1.0.0-SNAPSHOT</version>
+      <configuration>
+        <bridges>
+          <bridge>
+            <sourceApplication>App1</sourceApplication>
+            <source>com.example.App1Main#foo</source>
+            <dest>com.example.App2Main#fooWithLog</dest>
+            <type>redirect</type>
+          </bridge>
+          <bridge>
+            <sourceApplication>App2</sourceApplication>
+            <source>com.example.App2Main#foobar</source>
+            <dest>com.example.App2Main#redirectToItselfFooBar</dest>
+          </bridge>
+        </bridges>
+      </configuration>
       <executions>
         <execution>
           <id>bcbridge</id>
@@ -55,7 +70,13 @@ The build output will include:
 ```text
 [INFO] --- bcbridge:1.0.0-SNAPSHOT:hello (bcbridge) @ your-project ---
 [INFO] Hello World
+[INFO] Configured bridges:
+[INFO] Bridge 1: sourceApplication=App1, source=com.example.App1Main#foo, dest=com.example.App2Main#fooWithLog, type=redirect
+[INFO] Bridge 2: sourceApplication=App2, source=com.example.App2Main#foobar, dest=com.example.App2Main#redirectToItselfFooBar, type=redirect
 ```
+
+The `type` element is optional and currently defaults to `redirect`. Future milestones can add types such as
+`onMethodEnter` and `onMethodLeave` without changing the surrounding list structure.
 
 You can also invoke the goal directly after installing the plugin locally:
 
