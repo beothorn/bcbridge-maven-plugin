@@ -1,10 +1,17 @@
 # bcbridge-maven-plugin
 
-A Maven plugin for rewriting Java bytecode with Byte Buddy during the `package` phase.
+A Maven plugin for rewriting Java bytecode on packaging.
 
-The `rewrite` goal can replace configured source method bodies (`redirect`) or call a destination immediately
-before or after the original body (`OnMethodEnter` and `OnMethodExit`). The packaged application does not need
-Byte Buddy, a Java agent, or runtime reflection.
+Redirect functions inside libraries or on your on code.  
+If what you need is:
+- Print arguments for debugging inside libraries (fro example spring)
+- Send or enrich telemetry data
+- Patch simple bugs without waiting for some release and without forking
+- Mainly create workarounds for code that you have no access to the source
+
+This is for you
+
+Check [these examples](https://github.com/beothorn/bcbridge-examples/tree/main/mavenPlugin)
 
 ## Requirements
 
