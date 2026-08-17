@@ -4,6 +4,7 @@ package br.com.isageek.bcbridge.maven;
 public final class Bridge {
 
     private String sourceApplication;
+    /** JavaFlame matcher expression selecting source classes and methods. */
     private String source;
     private String dest;
     private String type = "redirect";

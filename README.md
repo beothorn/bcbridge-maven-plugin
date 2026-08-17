@@ -36,7 +36,7 @@ Add this configuration inside the consuming project's `<build>` element:
         <bridges>
           <bridge>
             <sourceApplication>my-application</sourceApplication>
-            <source>com.example.App#printOriginal</source>
+            <source>named(com.example.App)#named(printOriginal)</source>
             <dest>com.example.App#printRedirected</dest>
             <type>redirect</type>
           </bridge>
@@ -71,6 +71,34 @@ The build output will include:
 
 The `type` element is optional and defaults to `redirect`. Other planned types such as `onMethodEnter` and
 `onMethodLeave` are rejected until they are implemented.
+
+## Source matcher expressions
+
+`source` uses the JavaFlame matcher-expression parser. The part before `#` selects classes by fully qualified
+name, and the optional part after `#` selects methods. If the method part is omitted, every declared method in a
+matched class is redirected. The previous `com.example.App#printOriginal` form remains valid because bare values
+use `nameContains`.
+
+Available matcher functions are `named`, `namedIgnoreCase`, `nameStartsWith`, `nameStartsWithIgnoreCase`,
+`nameEndsWith`, `nameEndsWithIgnoreCase`, `nameContains`, `nameContainsIgnoreCase`, and `nameMatches`. Expressions
+also support `||`, `&&`, `!`, and parentheses. In XML, write `&&` as `&amp;&amp;`.
+
+For example:
+
+```xml
+<!-- One exact class and method -->
+<source>named(com.example.App)#named(printOriginal)</source>
+
+<!-- Methods beginning with "print" in classes ending in "Service" or "Controller" -->
+<source>(nameEndsWith(Service)||nameEndsWith(Controller))#nameStartsWith(print)</source>
+
+<!-- Combine conditions; XML escaping is required for && -->
+<source>nameStartsWith(com.example.)&amp;&amp;!nameEndsWith(Test)#nameMatches(run.*)</source>
+```
+
+Matcher arguments are unquoted strings. A source expression must match at least one declared method. `dest` is
+not an expression: it remains one exact `fully.qualified.Class#method` reference, and a matching destination
+overload is chosen for each selected source method.
 
 For `redirect`:
 

@@ -1,5 +1,9 @@
 package br.com.isageek.bcbridge.maven;
 
+import com.github.beothorn.agent.parser.ClassAndMethodMatcher;
+import com.github.beothorn.agent.parser.CompilationException;
+import com.github.beothorn.agent.parser.ElementMatcherFromExpression;
+import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
@@ -18,13 +22,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 import net.bytebuddy.ByteBuddy;
+import net.bytebuddy.description.method.MethodDescription;
+import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.dynamic.ClassFileLocator;
 import net.bytebuddy.dynamic.DynamicType;
 import net.bytebuddy.implementation.MethodCall;
+import net.bytebuddy.matcher.ElementMatcher;
+import net.bytebuddy.pool.TypePool;
 
 import static net.bytebuddy.matcher.ElementMatchers.isDeclaredBy;
 import static net.bytebuddy.matcher.ElementMatchers.isMethod;
-import static net.bytebuddy.matcher.ElementMatchers.named;
 import static net.bytebuddy.matcher.ElementMatchers.takesArguments;
 
 final class BytecodeBridgeRewriter {
@@ -47,49 +54,95 @@ final class BytecodeBridgeRewriter {
             throw new BridgeConfigurationException("Packaged artifact does not exist: " + packagedArtifact);
         }
 
-        Map<String, List<Bridge>> bridgesBySourceClass = new LinkedHashMap<>();
+        List<ParsedBridge> parsedBridges = new ArrayList<>();
         for (Bridge bridge : bridges) {
-            MethodReference source = MethodReference.parse(bridge.getSource(), "source");
-            MethodReference.parse(bridge.getDest(), "dest");
-            bridgesBySourceClass.computeIfAbsent(source.className(), ignored -> new ArrayList<>()).add(bridge);
+            parsedBridges.add(parse(bridge));
         }
 
         URL[] classPath = {classesDirectory.toUri().toURL()};
         try (URLClassLoader loader = new URLClassLoader(classPath, ClassLoader.getPlatformClassLoader());
              ClassFileLocator locator = new ClassFileLocator.ForFolder(classesDirectory.toFile())) {
             Map<String, byte[]> rewrittenClasses = new LinkedHashMap<>();
-            for (Map.Entry<String, List<Bridge>> entry : bridgesBySourceClass.entrySet()) {
-                rewriteSourceClass(loader, locator, entry.getKey(), entry.getValue(), rewrittenClasses);
+            Map<ParsedBridge, Integer> matchCounts = new LinkedHashMap<>();
+            parsedBridges.forEach(bridge -> matchCounts.put(bridge, 0));
+            TypePool typePool = TypePool.Default.of(locator);
+            for (String className : applicationClassNames()) {
+                TypeDescription sourceType = typePool.describe(className).resolve();
+                List<ParsedBridge> matchingBridges = parsedBridges.stream()
+                        .filter(bridge -> bridge.source().getClassMatcher().matches(sourceType))
+                        .toList();
+                if (!matchingBridges.isEmpty()) {
+                    Class<?> sourceClass = loadClass(loader, className, "source");
+                    rewriteSourceClass(loader, locator, sourceClass, matchingBridges, matchCounts, rewrittenClasses);
+                }
+            }
+            for (Map.Entry<ParsedBridge, Integer> entry : matchCounts.entrySet()) {
+                if (entry.getValue() == 0) {
+                    throw new BridgeConfigurationException("Source expression matched no methods: "
+                            + entry.getKey().configuration().getSource());
+                }
             }
             writeClasses(rewrittenClasses);
             writeJar(rewrittenClasses);
         }
     }
 
+    private static ParsedBridge parse(Bridge bridge) throws BridgeConfigurationException {
+        if (bridge.getSource() == null || bridge.getSource().isBlank()) {
+            throw new BridgeConfigurationException("Bridge source must not be empty");
+        }
+        try {
+            return new ParsedBridge(
+                    bridge,
+                    ElementMatcherFromExpression.forExpression(bridge.getSource()),
+                    MethodReference.parse(bridge.getDest(), "dest"));
+        } catch (CompilationException | RuntimeException e) {
+            throw new BridgeConfigurationException(
+                    "Invalid bridge source expression '" + bridge.getSource() + "': " + e.getMessage(), e);
+        }
+    }
+
+    private List<String> applicationClassNames() throws IOException {
+        try (var paths = Files.walk(classesDirectory)) {
+            return paths.filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().endsWith(".class"))
+                    .map(classesDirectory::relativize)
+                    .map(Path::toString)
+                    .map(name -> name.substring(0, name.length() - ".class".length()))
+                    .map(name -> name.replace(File.separatorChar, '.'))
+                    .filter(name -> !name.equals("module-info") && !name.endsWith("package-info"))
+                    .sorted()
+                    .toList();
+        }
+    }
+
     private void rewriteSourceClass(
             ClassLoader loader,
             ClassFileLocator locator,
-            String sourceClassName,
-            List<Bridge> bridges,
+            Class<?> sourceClass,
+            List<ParsedBridge> bridges,
+            Map<ParsedBridge, Integer> matchCounts,
             Map<String, byte[]> rewrittenClasses) throws Exception {
-        Class<?> sourceClass = loadClass(loader, sourceClassName, "source");
         DynamicType.Builder<?> builder = new ByteBuddy().redefine(sourceClass, locator);
 
-        for (Bridge bridge : bridges) {
-            MethodReference source = MethodReference.parse(bridge.getSource(), "source");
-            MethodReference destination = MethodReference.parse(bridge.getDest(), "dest");
+        for (ParsedBridge parsedBridge : bridges) {
+            Bridge bridge = parsedBridge.configuration();
+            MethodReference destination = parsedBridge.destination();
             Class<?> destinationClass = loadClass(loader, destination.className(), "destination");
-            List<Method> sourceMethods = declaredMethodsNamed(sourceClass, source.methodName());
+            ElementMatcher<? super MethodDescription> methodMatcher = methodMatcherFor(
+                    parsedBridge.source(), TypeDescription.ForLoadedType.of(sourceClass));
+            List<Method> sourceMethods = declaredMethodsMatching(sourceClass, methodMatcher);
             if (sourceMethods.isEmpty()) {
-                throw new BridgeConfigurationException("Source method not found: " + bridge.getSource());
+                continue;
             }
+            matchCounts.compute(parsedBridge, (ignored, count) -> count + sourceMethods.size());
 
             for (Method sourceMethod : sourceMethods) {
                 Method destinationMethod = matchingDestination(sourceMethod, destinationClass, destination, bridge);
                 MethodCall methodCall = destinationCall(destinationClass, destinationMethod, bridge);
-                builder = builder.method(named(source.methodName())
-                                .and(isMethod())
+                builder = builder.method(isMethod()
                                 .and(isDeclaredBy(sourceClass))
+                                .and(methodMatcher)
                                 .and(takesArguments(sourceMethod.getParameterTypes())))
                         .intercept(methodCall.withAllArguments());
                 logger.accept("Redirecting " + bridge.getSource() + " -> " + bridge.getDest());
@@ -97,8 +150,19 @@ final class BytecodeBridgeRewriter {
         }
 
         try (DynamicType.Unloaded<?> unloaded = builder.make()) {
-            rewrittenClasses.put(sourceClassName, unloaded.getBytes());
+            rewrittenClasses.put(sourceClass.getName(), unloaded.getBytes());
         }
+    }
+
+    private static ElementMatcher<? super MethodDescription> methodMatcherFor(
+            ElementMatcherFromExpression source,
+            TypeDescription sourceType) {
+        for (ClassAndMethodMatcher matcher : source.getClassAndMethodMatchers()) {
+            if (matcher.classMatcher.matches(sourceType)) {
+                return matcher.methodMatcher;
+            }
+        }
+        return isMethod();
     }
 
     private static MethodCall destinationCall(Class<?> destinationClass, Method destinationMethod, Bridge bridge)
@@ -134,10 +198,12 @@ final class BytecodeBridgeRewriter {
         }
     }
 
-    private static List<Method> declaredMethodsNamed(Class<?> type, String name) {
+    private static List<Method> declaredMethodsMatching(
+            Class<?> type,
+            ElementMatcher<? super MethodDescription> matcher) {
         List<Method> methods = new ArrayList<>();
         for (Method method : type.getDeclaredMethods()) {
-            if (method.getName().equals(name)) {
+            if (matcher.matches(new MethodDescription.ForLoadedMethod(method))) {
                 methods.add(method);
             }
         }
@@ -171,5 +237,11 @@ final class BytecodeBridgeRewriter {
                 Files.write(classEntry, entry.getValue());
             }
         }
+    }
+
+    private record ParsedBridge(
+            Bridge configuration,
+            ElementMatcherFromExpression source,
+            MethodReference destination) {
     }
 }

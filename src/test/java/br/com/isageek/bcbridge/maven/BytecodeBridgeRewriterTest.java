@@ -23,7 +23,16 @@ class BytecodeBridgeRewriterTest {
     Path temporaryDirectory;
 
     @Test
-    void rewritesClassDirectoryAndJarWithDirectParameterRelay() throws Exception {
+    void supportsLegacyClassAndMethodSource() throws Exception {
+        assertRewrites(FIXTURE_CLASS + "#original");
+    }
+
+    @Test
+    void rewritesMethodsSelectedByMatcherExpression() throws Exception {
+        assertRewrites("nameEndsWith(RedirectFixture)#nameStartsWith(orig)");
+    }
+
+    private void assertRewrites(String sourceExpression) throws Exception {
         Path classes = temporaryDirectory.resolve("classes");
         Path classFile = classes.resolve(FIXTURE_RESOURCE);
         Files.createDirectories(classFile.getParent());
@@ -39,7 +48,7 @@ class BytecodeBridgeRewriterTest {
         }
 
         Bridge bridge = new Bridge();
-        bridge.setSource(FIXTURE_CLASS + "#original");
+        bridge.setSource(sourceExpression);
         bridge.setDest(FIXTURE_CLASS + "#redirected");
 
         new BytecodeBridgeRewriter(classes, jar, ignored -> { }).rewrite(List.of(bridge));
