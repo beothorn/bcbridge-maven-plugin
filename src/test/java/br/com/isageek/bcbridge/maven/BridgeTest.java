@@ -11,6 +11,8 @@ class BridgeTest {
         Bridge bridge = new Bridge();
 
         assertEquals("redirect", bridge.getType());
+        assertEquals(true, bridge.isCaptureArguments());
+        assertEquals(false, bridge.isThisAsParameter());
     }
 
     @Test

@@ -31,7 +31,7 @@ class BCBridgeExecuteTest {
 
         Exception error = assertThrows(Exception.class, mojo::execute);
 
-        assertEquals("Unsupported bridge type 'onMethodEnter'. The currently supported type is 'redirect'.",
+        assertEquals("Unsupported bridge type 'onMethodEnter'. Supported types are 'redirect', 'OnMethodEnter', and 'OnMethodExit'.",
                 error.getMessage());
     }
 

@@ -44,9 +44,9 @@ public final class BCBridgeExecute extends AbstractMojo {
         }
 
         for (Bridge bridge : bridges) {
-            if (!"redirect".equals(bridge.getType())) {
+            if (!List.of("redirect", "OnMethodEnter", "OnMethodExit").contains(bridge.getType())) {
                 throw new MojoFailureException("Unsupported bridge type '" + bridge.getType()
-                        + "'. The currently supported type is 'redirect'.");
+                        + "'. Supported types are 'redirect', 'OnMethodEnter', and 'OnMethodExit'.");
             }
         }
 

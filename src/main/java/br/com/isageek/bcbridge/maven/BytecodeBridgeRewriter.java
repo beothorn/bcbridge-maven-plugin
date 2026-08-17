@@ -22,11 +22,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 import net.bytebuddy.ByteBuddy;
+import net.bytebuddy.asm.AsmVisitorWrapper;
 import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.dynamic.ClassFileLocator;
 import net.bytebuddy.dynamic.DynamicType;
 import net.bytebuddy.implementation.MethodCall;
+import net.bytebuddy.jar.asm.ClassWriter;
+import net.bytebuddy.jar.asm.MethodVisitor;
+import net.bytebuddy.jar.asm.Opcodes;
+import net.bytebuddy.jar.asm.Type;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.pool.TypePool;
 
@@ -139,13 +144,19 @@ final class BytecodeBridgeRewriter {
 
             for (Method sourceMethod : sourceMethods) {
                 Method destinationMethod = matchingDestination(sourceMethod, destinationClass, destination, bridge);
-                MethodCall methodCall = destinationCall(destinationClass, destinationMethod, bridge);
-                builder = builder.method(isMethod()
+                ElementMatcher.Junction<MethodDescription> exactMatcher = isMethod()
                                 .and(isDeclaredBy(sourceClass))
                                 .and(methodMatcher)
-                                .and(takesArguments(sourceMethod.getParameterTypes())))
-                        .intercept(methodCall.withAllArguments());
-                logger.accept("Redirecting " + bridge.getSource() + " -> " + bridge.getDest());
+                                .and(takesArguments(sourceMethod.getParameterTypes()));
+                if ("redirect".equals(bridge.getType())) {
+                    MethodCall call = configuredCall(destinationClass, destinationMethod, bridge);
+                    builder = builder.method(exactMatcher).intercept(call);
+                } else {
+                    builder = builder.visit(new AsmVisitorWrapper.ForDeclaredMethods()
+                            .method(exactMatcher, adviceVisitor(destinationClass, destinationMethod, bridge))
+                            .writerFlags(ClassWriter.COMPUTE_MAXS));
+                }
+                logger.accept(bridge.getType() + " " + bridge.getSource() + " -> " + bridge.getDest());
             }
         }
 
@@ -180,22 +191,103 @@ final class BytecodeBridgeRewriter {
         }
     }
 
+    private static MethodCall configuredCall(Class<?> destinationClass, Method destinationMethod, Bridge bridge)
+            throws BridgeConfigurationException {
+        MethodCall call = destinationCall(destinationClass, destinationMethod, bridge);
+        if (bridge.isThisAsParameter()) {
+            call = call.withThis();
+        }
+        return bridge.isCaptureArguments() ? call.withAllArguments() : call;
+    }
+
     private static Method matchingDestination(
             Method sourceMethod,
             Class<?> destinationClass,
             MethodReference destination,
             Bridge bridge) throws BridgeConfigurationException {
+        if (bridge.isThisAsParameter() && Modifier.isStatic(sourceMethod.getModifiers())) {
+            throw new BridgeConfigurationException("thisAsParameter cannot be used with static source method "
+                    + bridge.getSource());
+        }
+        Class<?>[] sourceParameters = bridge.isCaptureArguments() ? sourceMethod.getParameterTypes() : new Class<?>[0];
+        Class<?>[] destinationParameters = new Class<?>[sourceParameters.length + (bridge.isThisAsParameter() ? 1 : 0)];
+        int offset = 0;
+        if (bridge.isThisAsParameter()) {
+            destinationParameters[0] = Object.class;
+            offset = 1;
+        }
+        System.arraycopy(sourceParameters, 0, destinationParameters, offset, sourceParameters.length);
         try {
-            Method method = destinationClass.getDeclaredMethod(destination.methodName(), sourceMethod.getParameterTypes());
-            if (!sourceMethod.getReturnType().isAssignableFrom(method.getReturnType())) {
+            Method method = destinationClass.getDeclaredMethod(destination.methodName(), destinationParameters);
+            if ("redirect".equals(bridge.getType()) && sourceMethod.getReturnType() != method.getReturnType()) {
                 throw new BridgeConfigurationException("Destination return type for " + bridge.getDest()
-                        + " is not compatible with " + bridge.getSource());
+                        + " does not match " + bridge.getSource());
+            }
+            if (!"redirect".equals(bridge.getType()) && method.getReturnType() != void.class) {
+                throw new BridgeConfigurationException("Destination return type for " + bridge.getType()
+                        + " must be void: " + bridge.getDest());
+            }
+            if (!Modifier.isStatic(method.getModifiers())) {
+                try {
+                    destinationClass.getDeclaredConstructor();
+                } catch (NoSuchMethodException e) {
+                    throw new BridgeConfigurationException("Non-static destination " + bridge.getDest()
+                            + " requires a no-argument constructor", e);
+                }
             }
             return method;
         } catch (NoSuchMethodException e) {
             throw new BridgeConfigurationException("Destination method with matching parameters not found: "
                     + bridge.getDest(), e);
         }
+    }
+
+    private static AsmVisitorWrapper.ForDeclaredMethods.MethodVisitorWrapper adviceVisitor(
+            Class<?> destinationClass, Method destinationMethod, Bridge bridge) {
+        return (instrumentedType, instrumentedMethod, methodVisitor, context, typePool, writerFlags, readerFlags) ->
+                new MethodVisitor(Opcodes.ASM9, methodVisitor) {
+                    @Override
+                    public void visitCode() {
+                        super.visitCode();
+                        if ("OnMethodEnter".equals(bridge.getType())) {
+                            emitDestinationCall(this, instrumentedMethod, destinationClass, destinationMethod, bridge);
+                        }
+                    }
+
+                    @Override
+                    public void visitInsn(int opcode) {
+                        if ("OnMethodExit".equals(bridge.getType())
+                                && opcode >= Opcodes.IRETURN && opcode <= Opcodes.RETURN) {
+                            emitDestinationCall(this, instrumentedMethod, destinationClass, destinationMethod, bridge);
+                        }
+                        super.visitInsn(opcode);
+                    }
+                };
+    }
+
+    private static void emitDestinationCall(MethodVisitor visitor, MethodDescription sourceMethod,
+            Class<?> destinationClass, Method destinationMethod, Bridge bridge) {
+        String owner = Type.getInternalName(destinationClass);
+        boolean isStatic = Modifier.isStatic(destinationMethod.getModifiers());
+        if (!isStatic) {
+            visitor.visitTypeInsn(Opcodes.NEW, owner);
+            visitor.visitInsn(Opcodes.DUP);
+            visitor.visitMethodInsn(Opcodes.INVOKESPECIAL, owner, "<init>", "()V", false);
+        }
+        if (bridge.isThisAsParameter()) {
+            visitor.visitVarInsn(Opcodes.ALOAD, 0);
+        }
+        if (bridge.isCaptureArguments()) {
+            int local = sourceMethod.isStatic() ? 0 : 1;
+            for (Type parameter : Type.getArgumentTypes(sourceMethod.getDescriptor())) {
+                visitor.visitVarInsn(parameter.getOpcode(Opcodes.ILOAD), local);
+                local += parameter.getSize();
+            }
+        }
+        int opcode = isStatic ? Opcodes.INVOKESTATIC
+                : destinationClass.isInterface() ? Opcodes.INVOKEINTERFACE : Opcodes.INVOKEVIRTUAL;
+        visitor.visitMethodInsn(opcode, owner, destinationMethod.getName(), Type.getMethodDescriptor(destinationMethod),
+                destinationClass.isInterface());
     }
 
     private static List<Method> declaredMethodsMatching(
