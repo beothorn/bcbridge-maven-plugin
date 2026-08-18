@@ -6,7 +6,7 @@
 
   <groupId>com.github.beothorn</groupId>
   <artifactId>bcbridge-maven-plugin</artifactId>
-  <version>1.0.0-SNAPSHOT</version>
+  <version>1.0.0</version>
   <packaging>maven-plugin</packaging>
 
   <name>bcbridge-maven-plugin</name>
@@ -140,7 +140,7 @@
         <version>0.9.0</version>
         <extensions>true</extensions>
         <configuration>
-          <publishingServerId>central</publishingServerId>
+          <publishingServerId>ossrh</publishingServerId>
           <autoPublish>true</autoPublish>
           <waitUntil>published</waitUntil>
         </configuration>
