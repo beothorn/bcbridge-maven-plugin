@@ -26,8 +26,7 @@ class BCBridgeExecuteTest {
         BCBridgeExecute mojo = new BCBridgeExecute();
         RecordingLog log = new RecordingLog();
         mojo.setLog(log);
-        mojo.setBridges(List.of(bridge(
-                "App1", "com.example.App1Main#foo", "com.example.App2Main#fooWithLog", "onMethodEnter")));
+        mojo.setBridges(List.of(bridge("com.example.App1Main#foo", "com.example.App2Main#fooWithLog", "onMethodEnter")));
 
         Exception error = assertThrows(Exception.class, mojo::execute);
 
@@ -35,9 +34,8 @@ class BCBridgeExecuteTest {
                 error.getMessage());
     }
 
-    private static Bridge bridge(String application, String source, String dest, String type) {
+    private static Bridge bridge(String source, String dest, String type) {
         Bridge bridge = new Bridge();
-        bridge.setSourceApplication(application);
         bridge.setSource(source);
         bridge.setDest(dest);
         if (type != null) {

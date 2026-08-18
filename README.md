@@ -42,13 +42,11 @@ Add this configuration inside the consuming project's `<build>` element:
       <configuration>
         <bridges>
           <bridge>
-            <sourceApplication>bcbridge-maven-plugin-example</sourceApplication>
             <source>bcbridge.example.App#defaultMatcherOriginal</source>
             <dest>br.com.isageek.bcbridge.example.App#defaultMatcherRedirected</dest>
             <type>redirect</type>
           </bridge>
           <bridge>
-            <sourceApplication>my-application</sourceApplication>
             <source>nameStartsWith(br.com.isageek.bcbridge.example)#nameStartsWith(nameStartsWithOriginal)</source>
             <dest>com.example.App#printRedirected</dest>
             <type>redirect</type>

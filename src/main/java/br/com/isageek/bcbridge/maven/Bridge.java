@@ -3,21 +3,12 @@ package br.com.isageek.bcbridge.maven;
 /** Configuration for one method bridge. */
 public final class Bridge {
 
-    private String sourceApplication;
     /** JavaFlame matcher expression selecting source classes and methods. */
     private String source;
     private String dest;
     private String type = "redirect";
     private String captureArguments;
     private boolean thisAsParameter;
-
-    public String getSourceApplication() {
-        return sourceApplication;
-    }
-
-    public void setSourceApplication(String sourceApplication) {
-        this.sourceApplication = sourceApplication;
-    }
 
     public String getSource() {
         return source;
