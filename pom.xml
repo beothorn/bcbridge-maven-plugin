@@ -6,7 +6,7 @@
 
   <groupId>com.github.beothorn</groupId>
   <artifactId>bcbridge-maven-plugin</artifactId>
-  <version>1.0.0</version>
+  <version>1.0.1-SNAPSHOT</version>
   <packaging>maven-plugin</packaging>
 
   <name>bcbridge-maven-plugin</name>

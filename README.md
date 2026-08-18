@@ -4,7 +4,7 @@ A Maven plugin for rewriting Java bytecode on packaging.
 
 Redirect functions inside libraries or on your on code.  
 If what you need is:
-- Print arguments for debugging inside libraries (fro example spring)
+- Print arguments for debugging inside libraries (for example spring)
 - Send or enrich telemetry data
 - Patch simple bugs without waiting for some release and without forking
 - Mainly create workarounds for code that you have no access to the source
@@ -18,19 +18,10 @@ Check [these examples](https://github.com/beothorn/bcbridge-examples/tree/main/m
 - Java 17 or newer
 - Maven 3.9 or newer
 
-## Install locally
-
-Clone this repository and install the plugin in your local Maven repository:
-
-```shell
-mvn install
-```
-
-This makes version `1.0.0-SNAPSHOT` available to other Maven projects on the same machine.
-
 ## Add the plugin to a project
 
-Add this configuration inside the consuming project's `<build>` element:
+Add this configuration inside the consuming project's `<build>` element on the pom.xml.  
+Replace the bridge entry:
 
 ```xml
 <build>
@@ -38,20 +29,16 @@ Add this configuration inside the consuming project's `<build>` element:
     <plugin>
       <groupId>br.com.isageek</groupId>
       <artifactId>bcbridge-maven-plugin</artifactId>
-      <version>1.0.0-SNAPSHOT</version>
+      <version>1.0.0</version>
       <configuration>
         <bridges>
           <bridge>
+            <!-- Here you put the original function. Can be on your code or some library -->
             <source>bcbridge.example.App#defaultMatcherOriginal</source>
+            <!-- The function to where the call will be redicrected -->
             <dest>br.com.isageek.bcbridge.example.App#defaultMatcherRedirected</dest>
+            <!-- Type is redirect, check the rest of the readme for other options -->
             <type>redirect</type>
-          </bridge>
-          <bridge>
-            <source>nameStartsWith(br.com.isageek.bcbridge.example)#nameStartsWith(nameStartsWithOriginal)</source>
-            <dest>com.example.App#printRedirected</dest>
-            <type>redirect</type>
-            <captureArguments>args</captureArguments>
-            <thisAsParameter>false</thisAsParameter>
           </bridge>
         </bridges>
       </configuration>
@@ -75,35 +62,61 @@ Then package the consuming project:
 mvn package
 ```
 
-The build output will include:
+The changes will show on the logs.
 
-```text
-[INFO] --- bcbridge:1.0.0-SNAPSHOT:rewrite (bcbridge) @ your-project ---
-[INFO] Redirecting com.example.App#printOriginal -> com.example.App#printRedirected
-```
+# Available configurations
 
-`type` defaults to `redirect`; the other supported values are the case-sensitive `OnMethodEnter` and
-`OnMethodExit`. Advice destinations run before or after the original implementation and must return `void`.
+## `source`
 
-Omit `captureArguments` to pass no source arguments. Set it to `args` to pass each source argument as a separate
-destination argument, or to `array` to pass all source arguments as one `Object[]` (primitive values are boxed).
-`thisAsParameter` defaults to `false`. When true, the source receiver is passed as the first destination parameter,
-whose declared type must be exactly `Object`; this option cannot be used on a static source method.
+| Value or syntax | Explanation |
+| --- | --- |
+| `namespace.Class#function` | Simple class-and-function matcher. Bare values use `nameContains`, so this selects declared functions whose name contains `function` in classes whose fully qualified name contains `namespace.Class`. |
+| `<class-expression>#<function-expression>` | Selects declared functions using separate matcher expressions for the fully qualified class name and function name. The expression must match at least one declared function. Overloads are supported when every selected overload has a destination with the required signature. |
+| `<class-expression>` | Selects every declared function in each matching class. |
+| `named(value)` | Matches the entire name exactly (case-sensitive). |
+| `namedIgnoreCase(value)` | Matches the entire name exactly, ignoring case. |
+| `nameStartsWith(value)` | Matches names beginning with `value` (case-sensitive). |
+| `nameStartsWithIgnoreCase(value)` | Matches names beginning with `value`, ignoring case. |
+| `nameEndsWith(value)` | Matches names ending with `value` (case-sensitive). |
+| `nameEndsWithIgnoreCase(value)` | Matches names ending with `value`, ignoring case. |
+| `nameContains(value)` | Matches names containing `value` (case-sensitive). This is the matcher used by bare values. |
+| `nameContainsIgnoreCase(value)` | Matches names containing `value`, ignoring case. |
+| `nameMatches(regex)` | Matches a Java regular expression against the entire name. Add `.*` when arbitrary text is allowed before or after the relevant part. Matcher arguments are unquoted. |
+| `a \|\| b` | Matches when either expression matches. |
+| `a && b` | Matches when both expressions match. Write this as `a &amp;&amp; b` in XML. |
+| `!a` | Matches when the expression does not match. |
+| `(a)` | Groups expressions to control precedence. Group each `class#function` pair when combining several pairs. |
 
-## Source matcher expressions
+## `dest`
 
-`source` uses the JavaFlame matcher-expression parser. The part before `#` selects classes by fully qualified
-name, and the optional part after `#` selects methods. If the method part is omitted, every declared method in a
-matched class is redirected. The previous `com.example.App#printOriginal` form remains valid because bare values
-use `nameContains`.
+| Value or syntax | Explanation |
+| --- | --- |
+| `fully.qualified.Class#function` | Required reference to one exact destination function name. This is not a matcher: matcher functions, operators, and multiple function names are not allowed. When the Java function is overloaded, the plugin resolves the single overload whose parameters match the configured `captureArguments` and `thisAsParameter` values. A non-static destination's class must have a no-argument constructor. |
 
-Available matcher functions are `named`, `namedIgnoreCase`, `nameStartsWith`, `nameStartsWithIgnoreCase`,
-`nameEndsWith`, `nameEndsWithIgnoreCase`, `nameContains`, `nameContainsIgnoreCase`, and `nameMatches`. Expressions
-also support `||`, `&&`, `!`, and parentheses. In XML, write `&&` as `&amp;&amp;`.
+## `type`
 
-`nameMatches` accepts a Java regular expression and matches it against the entire class or method name. Include
-`.*` when the regex should allow arbitrary text before or after the part you care about. For example,
-`nameMatches(.*Test[AB].*)` matches `com.example.TestA` and `com.example.TestB`, but not `com.example.TestC`.
+| Value (case-sensitive) | Explanation |
+| --- | --- |
+| `redirect` (default) | Replaces the source implementation with a call to `dest`; the original implementation does not run. The destination return type must exactly match the source return type. |
+| `OnMethodEnter` | Calls `dest` immediately before the original implementation. The original implementation still runs, and the destination must return `void`. |
+| `OnMethodExit` | Calls `dest` after every normal return from the original implementation. It does not run after an exceptional exit, and the destination must return `void`. |
+
+## `captureArguments`
+
+| Value | Explanation |
+| --- | --- |
+| Omitted (default) | Passes no source arguments. Apart from a possible leading `Object` enabled by `thisAsParameter`, the destination must have no parameters. |
+| `args` | Passes every source argument as a separate destination argument. The destination parameter types must exactly match the source parameter types, in the same order. |
+| `array` | Passes all source arguments as one `Object[]`; primitive arguments are boxed. Apart from a possible leading `Object` enabled by `thisAsParameter`, the destination must have one `Object[]` parameter. |
+
+## `thisAsParameter`
+
+| Value | Explanation |
+| --- | --- |
+| `false` (default) | Does not pass the source object to the destination. |
+| `true` | Passes the source object as the first destination parameter, before parameters selected by `captureArguments`. That parameter's declared type must be exactly `Object`. This cannot be used with a static source function. |
+
+## Source matcher examples
 
 For example:
 
@@ -121,27 +134,5 @@ For example:
 <source>nameMatches(com[.]example[.].*Service)#nameMatches(find(ById|All))</source>
 ```
 
-Matcher arguments are unquoted strings. A source expression must match at least one declared method. `dest` is
-not an expression: it remains one exact `fully.qualified.Class#method` reference, and a matching destination
-overload is chosen for each selected source method.
-
-For `redirect`:
-
-- With `captureArguments=args`, destination parameters must match the source parameters exactly. With
-  `captureArguments=array`, the destination receives one `Object[]`. When omitted, no source parameters are passed.
-- With `thisAsParameter=true`, prepend an `Object` parameter to that signature.
-- The destination return type must exactly match the source return type.
-- A non-static destination class must have a no-argument constructor.
-- Overloaded source methods are supported when every overload has a matching destination signature.
-- Both `target/classes` and the packaged JAR are rewritten. Run the goal through `mvn package` so the JAR exists
-  before rewriting begins.
-
-For `OnMethodEnter` and `OnMethodExit`:
-
-- The original method always executes. Enter runs immediately before it; exit runs after every normal return.
-- The destination must return `void`.
-- The same `captureArguments` and `thisAsParameter` parameter rules apply.
-
-For example, an enter hook that receives nothing omits `captureArguments` and uses a zero-argument destination.
-Adding `thisAsParameter=true` changes that destination signature to `(Object)`. An exit hook with
-`captureArguments=args` and `thisAsParameter=true` uses `(Object, <all source parameter types>)`.
+Both `target/classes` and the packaged JAR are rewritten. Run the goal through `mvn package` so the JAR exists
+before rewriting begins.
