@@ -4,7 +4,7 @@ A Maven plugin for rewriting Java bytecode on packaging.
 
 Redirect functions inside libraries or on your on code.  
 If what you need is:
-- Print arguments for debugging inside libraries (for example spring)
+- Print arguments for debugging inside libraries
 - Send or enrich telemetry data
 - Patch simple bugs without waiting for some release and without forking
 - Mainly create workarounds for code that you have no access to the source
