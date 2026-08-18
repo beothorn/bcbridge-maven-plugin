@@ -101,6 +101,10 @@ Available matcher functions are `named`, `namedIgnoreCase`, `nameStartsWith`, `n
 `nameEndsWith`, `nameEndsWithIgnoreCase`, `nameContains`, `nameContainsIgnoreCase`, and `nameMatches`. Expressions
 also support `||`, `&&`, `!`, and parentheses. In XML, write `&&` as `&amp;&amp;`.
 
+`nameMatches` accepts a Java regular expression and matches it against the entire class or method name. Include
+`.*` when the regex should allow arbitrary text before or after the part you care about. For example,
+`nameMatches(.*Test[AB].*)` matches `com.example.TestA` and `com.example.TestB`, but not `com.example.TestC`.
+
 For example:
 
 ```xml
@@ -112,6 +116,9 @@ For example:
 
 <!-- Combine conditions; XML escaping is required for && -->
 <source>nameStartsWith(com.example.)&amp;&amp;!nameEndsWith(Test)#nameMatches(run.*)</source>
+
+<!-- Regex in both the fully qualified class name and method name -->
+<source>nameMatches(com[.]example[.].*Service)#nameMatches(find(ById|All))</source>
 ```
 
 Matcher arguments are unquoted strings. A source expression must match at least one declared method. `dest` is

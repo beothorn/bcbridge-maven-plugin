@@ -1,11 +1,25 @@
 package com.github.beothorn.agent.parser;
 
+import net.bytebuddy.description.method.MethodDescription;
+import net.bytebuddy.description.type.TypeDescription;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Method;
 import java.util.List;
 
 class MethodMatcherTest {
+
+    static class RegexFixture {
+        void testA() {
+        }
+
+        void testB() {
+        }
+
+        void testC() {
+        }
+    }
 
     @Test
     void happyDay() throws CompilationException {
@@ -56,5 +70,30 @@ class MethodMatcherTest {
         Assertions.assertEquals("(name(contains(funX)) or name(contains(funY)))", classAndMethodMatchers.get(0).methodMatcher.toString());
         Assertions.assertEquals("(name(contains(classW)) or name(contains(classZ)))", classAndMethodMatchers.get(1).classMatcher.toString());
         Assertions.assertEquals("(name(contains(funW)) and name(contains(funZ)))", classAndMethodMatchers.get(1).methodMatcher.toString());
+    }
+
+    @Test
+    void nameMatchesSupportsRegexForClassNames() throws CompilationException {
+        ElementMatcherFromExpression expression = ElementMatcherFromExpression.forExpression(
+                "nameMatches(.*MethodMatcherTest[$]RegexFixtur[e])");
+
+        Assertions.assertTrue(expression.getClassMatcher().matches(TypeDescription.ForLoadedType.of(RegexFixture.class)));
+        Assertions.assertFalse(expression.getClassMatcher().matches(TypeDescription.ForLoadedType.of(MethodMatcherTest.class)));
+    }
+
+    @Test
+    void nameMatchesSupportsRegexForMethodNames() throws Exception {
+        ElementMatcherFromExpression expression = ElementMatcherFromExpression.forExpression(
+                "nameMatches(.*RegexFixture)#nameMatches(test[AB])");
+        ClassAndMethodMatcher matcher = expression.getClassAndMethodMatchers().get(0);
+
+        Assertions.assertTrue(matcher.methodMatcher.matches(method("testA")));
+        Assertions.assertTrue(matcher.methodMatcher.matches(method("testB")));
+        Assertions.assertFalse(matcher.methodMatcher.matches(method("testC")));
+    }
+
+    private static MethodDescription method(String name) throws NoSuchMethodException {
+        Method method = RegexFixture.class.getDeclaredMethod(name);
+        return new MethodDescription.ForLoadedMethod(method);
     }
 }
