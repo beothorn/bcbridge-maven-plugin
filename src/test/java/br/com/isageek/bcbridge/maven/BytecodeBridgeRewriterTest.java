@@ -35,40 +35,68 @@ class BytecodeBridgeRewriterTest {
 
     @Test
     void invokesEnterWithoutArgumentsBeforeOriginal() throws Exception {
-        assertAdvice("OnMethodEnter", "adviceNoArguments", false, false,
+        assertAdvice("OnMethodEnter", "adviceNoArguments", null, false,
                 "advice();original(value);");
     }
 
     @Test
     void invokesExitWithArgumentsAfterOriginal() throws Exception {
-        assertAdvice("OnMethodExit", "adviceArguments", true, false,
+        assertAdvice("OnMethodExit", "adviceArguments", "args", false,
                 "original(value);advice(value);");
     }
 
     @Test
     void invokesEnterWithThisOnly() throws Exception {
-        assertAdvice("OnMethodEnter", "adviceThis", false, true,
+        assertAdvice("OnMethodEnter", "adviceThis", null, true,
                 "advice(RedirectFixture);original(value);");
     }
 
     @Test
     void invokesExitWithThisAndArguments() throws Exception {
-        assertAdvice("OnMethodExit", "adviceThisAndArguments", true, true,
+        assertAdvice("OnMethodExit", "adviceThisAndArguments", "args", true,
                 "original(value);advice(RedirectFixture,value);");
     }
 
     @Test
     void redirectsWithThisAndArguments() throws Exception {
         TestArtifact artifact = artifact();
-        Bridge bridge = bridge("redirectedWithThis", "redirect", true, true);
+        Bridge bridge = bridge("redirectedWithThis", "redirect", "args", true);
         new BytecodeBridgeRewriter(artifact.classes(), artifact.jar(), ignored -> { }).rewrite(List.of(bridge));
         assertEquals("RedirectFixture: value", invoke(artifact.classes().toUri().toURL(), "value"));
     }
 
     @Test
+    void redirectsWithArgumentsInArray() throws Exception {
+        TestArtifact artifact = artifact();
+        Bridge bridge = bridge("redirectedWithArray", "redirect", "array", false);
+        new BytecodeBridgeRewriter(artifact.classes(), artifact.jar(), ignored -> { }).rewrite(List.of(bridge));
+        assertEquals("array: value", invoke(artifact.classes().toUri().toURL(), "value"));
+    }
+
+    @Test
+    void invokesAdviceWithArgumentsInArray() throws Exception {
+        assertAdvice("OnMethodEnter", "adviceArray", "array", false,
+                "array(value);original(value);");
+    }
+
+    @Test
+    void doesNotDuplicateAdviceWhenArtifactIsRewrittenAgain() throws Exception {
+        TestArtifact artifact = artifact();
+        Bridge bridge = bridge("adviceArguments", "OnMethodEnter", "args", false);
+        BytecodeBridgeRewriter rewriter = new BytecodeBridgeRewriter(
+                artifact.classes(), artifact.jar(), ignored -> { });
+
+        rewriter.rewrite(List.of(bridge));
+        rewriter.rewrite(List.of(bridge));
+
+        assertEquals("original: value", invoke(artifact.classes().toUri().toURL(), "value"));
+        assertEquals("advice(value);original(value);", events(artifact.classes().toUri().toURL()));
+    }
+
+    @Test
     void rejectsNonVoidAdviceDestination() throws Exception {
         TestArtifact artifact = artifact();
-        Bridge bridge = bridge("invalidAdviceReturn", "OnMethodEnter", true, false);
+        Bridge bridge = bridge("invalidAdviceReturn", "OnMethodEnter", "args", false);
         BridgeConfigurationException error = assertThrows(BridgeConfigurationException.class,
                 () -> new BytecodeBridgeRewriter(artifact.classes(), artifact.jar(), ignored -> { })
                         .rewrite(List.of(bridge)));
@@ -76,7 +104,7 @@ class BytecodeBridgeRewriterTest {
                 + FIXTURE_CLASS + "#invalidAdviceReturn", error.getMessage());
     }
 
-    private void assertAdvice(String type, String destination, boolean captureArguments,
+    private void assertAdvice(String type, String destination, String captureArguments,
             boolean thisAsParameter, String expectedEvents) throws Exception {
         TestArtifact artifact = artifact();
         Bridge bridge = bridge(destination, type, captureArguments, thisAsParameter);
@@ -85,7 +113,7 @@ class BytecodeBridgeRewriterTest {
         assertEquals(expectedEvents, events(artifact.classes().toUri().toURL()));
     }
 
-    private static Bridge bridge(String destination, String type, boolean captureArguments,
+    private static Bridge bridge(String destination, String type, String captureArguments,
             boolean thisAsParameter) {
         Bridge bridge = new Bridge();
         bridge.setSource(FIXTURE_CLASS + "#original");
@@ -141,6 +169,7 @@ class BytecodeBridgeRewriterTest {
         Bridge bridge = new Bridge();
         bridge.setSource(sourceExpression);
         bridge.setDest(FIXTURE_CLASS + "#redirected");
+        bridge.setCaptureArguments("args");
 
         new BytecodeBridgeRewriter(classes, jar, ignored -> { }).rewrite(List.of(bridge));
 

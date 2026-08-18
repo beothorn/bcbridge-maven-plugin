@@ -8,7 +8,7 @@ public final class Bridge {
     private String source;
     private String dest;
     private String type = "redirect";
-    private boolean captureArguments = true;
+    private String captureArguments;
     private boolean thisAsParameter;
 
     public String getSourceApplication() {
@@ -43,11 +43,11 @@ public final class Bridge {
         this.type = type;
     }
 
-    public boolean isCaptureArguments() {
+    public String getCaptureArguments() {
         return captureArguments;
     }
 
-    public void setCaptureArguments(boolean captureArguments) {
+    public void setCaptureArguments(String captureArguments) {
         this.captureArguments = captureArguments;
     }
 

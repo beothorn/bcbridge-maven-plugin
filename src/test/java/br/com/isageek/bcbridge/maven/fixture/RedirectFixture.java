@@ -20,12 +20,20 @@ public final class RedirectFixture {
         return receiver.getClass().getSimpleName() + ": " + value;
     }
 
+    public static String redirectedWithArray(Object[] arguments) {
+        return "array: " + arguments[0];
+    }
+
     public static void adviceNoArguments() {
         events += "advice();";
     }
 
     public static void adviceArguments(String value) {
         events += "advice(" + value + ");";
+    }
+
+    public static void adviceArray(Object[] arguments) {
+        events += "array(" + arguments[0] + ");";
     }
 
     public static void adviceThis(Object receiver) {

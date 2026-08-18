@@ -52,7 +52,7 @@ Add this configuration inside the consuming project's `<build>` element:
             <source>nameStartsWith(br.com.isageek.bcbridge.example)#nameStartsWith(nameStartsWithOriginal)</source>
             <dest>com.example.App#printRedirected</dest>
             <type>redirect</type>
-            <captureArguments>true</captureArguments>
+            <captureArguments>args</captureArguments>
             <thisAsParameter>false</thisAsParameter>
           </bridge>
         </bridges>
@@ -87,7 +87,8 @@ The build output will include:
 `type` defaults to `redirect`; the other supported values are the case-sensitive `OnMethodEnter` and
 `OnMethodExit`. Advice destinations run before or after the original implementation and must return `void`.
 
-`captureArguments` defaults to `true`. When false, source arguments are omitted from the destination call.
+Omit `captureArguments` to pass no source arguments. Set it to `args` to pass each source argument as a separate
+destination argument, or to `array` to pass all source arguments as one `Object[]` (primitive values are boxed).
 `thisAsParameter` defaults to `false`. When true, the source receiver is passed as the first destination parameter,
 whose declared type must be exactly `Object`; this option cannot be used on a static source method.
 
@@ -121,8 +122,8 @@ overload is chosen for each selected source method.
 
 For `redirect`:
 
-- With `captureArguments=true`, destination parameters must match the source parameters exactly; with false, no
-  source parameters are passed.
+- With `captureArguments=args`, destination parameters must match the source parameters exactly. With
+  `captureArguments=array`, the destination receives one `Object[]`. When omitted, no source parameters are passed.
 - With `thisAsParameter=true`, prepend an `Object` parameter to that signature.
 - The destination return type must exactly match the source return type.
 - A non-static destination class must have a no-argument constructor.
@@ -136,6 +137,6 @@ For `OnMethodEnter` and `OnMethodExit`:
 - The destination must return `void`.
 - The same `captureArguments` and `thisAsParameter` parameter rules apply.
 
-For example, an enter hook that receives nothing uses `captureArguments=false` and a zero-argument destination.
-Adding `thisAsParameter=true` changes that destination signature to `(Object)`. An exit hook with both options true
-uses `(Object, <all source parameter types>)`.
+For example, an enter hook that receives nothing omits `captureArguments` and uses a zero-argument destination.
+Adding `thisAsParameter=true` changes that destination signature to `(Object)`. An exit hook with
+`captureArguments=args` and `thisAsParameter=true` uses `(Object, <all source parameter types>)`.
