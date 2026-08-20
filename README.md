@@ -15,6 +15,7 @@ Check [these examples](https://github.com/beothorn/bcbridge-examples/tree/main/m
 
 ## Requirements
 
+- Fat jar build
 - Java 17 or newer
 - Maven 3.9 or newer
 
